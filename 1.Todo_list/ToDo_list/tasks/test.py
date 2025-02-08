@@ -1,6 +1,11 @@
 from django.test import TestCase
 from .models import Task
 from .serializers import TaskSerializer
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APITestCase
+
+
 
 class TaskModelTest(TestCase):
     def setUp(self):
@@ -47,3 +52,74 @@ class TaskSerializerTest(TestCase):
     def test_serializer_validation(self):
         serializer = TaskSerializer(data=self.task_data)
         self.assertTrue(serializer.is_valid())
+
+class TaskViewsTest(APITestCase):
+    def setUp(self):
+        self.task_data = {
+            'title': 'Test Task',
+            'description': 'Test Description',
+            'is_completed': False
+        }
+        self.task = Task.objects.create(**self.task_data)
+    
+    def test_list_tasks(self):
+        url = reverse('task-list-create')
+        response = self.client.get(url)
+        tasks = Task.objects.all()
+        serializer = TaskSerializer(tasks, many=True)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, serializer.data)
+    
+    def test_create_task(self):
+        url = reverse('task-list-create')
+        new_task_data = {
+            'title': 'New task',
+            'description': 'New Description',
+            'is_completed': False
+        }
+        response = self.client.post(url, new_task_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Task.objects.count(), 2)
+        self.assertEqual(Task.objects.get(title='New task').description, 'New Description')
+    
+    def test_retrieve_task(self):
+        url = reverse('task-retrieve-update-destroy', args=[self.task.id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['title'], self.task_data['title'])
+    
+    def test_update_task(self):
+        url = reverse('task-retrieve-update-destroy', args=[self.task.id])
+        updated_data = {
+            'title': 'Updated Task',
+            'description': 'Updated Description',
+            'is_completed': True
+        }
+
+        response = self.client.put(url, updated_data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.title, 'Updated Task')
+        self.assertEqual(self.task.is_completed, True)
+    
+    def test_delete_task(self):
+        url = reverse('task-retrieve-update-destroy', args=[self.task.id])
+        response = self.client.delete(url)
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Task.objects.count(), 0)
+    
+    def test_create_task_invalid_data(self):
+        url = reverse('task-list-create')  # Make sure this matches your URL name
+        invalid_data = {
+            'title': '',  # Title should not be empty
+            'description': 'Test Description'
+        }
+        response = self.client.post(url, invalid_data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
